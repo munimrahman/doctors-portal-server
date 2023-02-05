@@ -1,7 +1,12 @@
 const express = require("express");
 const dotenv = require("dotenv").config();
 const cors = require("cors");
-const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const {
+  MongoClient,
+  ServerApiVersion,
+  ObjectId,
+  CURSOR_FLAGS,
+} = require("mongodb");
 const jwt = require("jsonwebtoken");
 const port = process.env.PORT || 5000;
 
@@ -43,6 +48,7 @@ async function run() {
       .db("doctors-portal")
       .collection("bookings");
     const usersCollection = client.db("doctors-portal").collection("users");
+    const doctorsCollection = client.db("doctors-portal").collection("doctors");
     // API Routes
     // Use Aggregate to query multiple collection and then merge data
     app.get("/appointment-options", async (req, res) => {
@@ -117,6 +123,15 @@ async function run() {
       res.send(options);
     });
 
+    app.get("/appointmentSpecialty", async (req, res) => {
+      const query = {};
+      const result = await appointmentOptionCollection
+        .find(query)
+        .project({ name: 1 })
+        .toArray();
+      res.send(result);
+    });
+
     app.get("/bookings", verifyJWT, async (req, res) => {
       const email = req.query.email;
       const decodedEmail = req.decoded.email;
@@ -160,9 +175,12 @@ async function run() {
     });
 
     app.get("/users/admin/:email", async (req, res) => {
-      const email = req.params.id;
+      const email = req.params.email;
       const query = { email: email };
+      // console.log(email);
       const user = await usersCollection.findOne(query);
+      // console.log(user);
+      // console.log(user?.role === "admin");
       res.send({ isAdmin: user?.role === "admin" });
     });
 
@@ -202,6 +220,26 @@ async function run() {
         updatedDoc,
         option
       );
+      res.send(result);
+    });
+
+    // doctors api
+    app.post("/doctors", async (req, res) => {
+      const doctor = req.body;
+      const result = await doctorsCollection.insertOne(doctor);
+      res.send(result);
+    });
+
+    app.get("/doctors", async (req, res) => {
+      const query = {};
+      const result = await doctorsCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.delete("/doctors/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await doctorsCollection.deleteOne(query);
       res.send(result);
     });
   } finally {
