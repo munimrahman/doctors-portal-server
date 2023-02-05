@@ -8,6 +8,8 @@ const {
   CURSOR_FLAGS,
 } = require("mongodb");
 const jwt = require("jsonwebtoken");
+const stripe = require("stripe")(process.env.STRIPE_SK);
+
 const port = process.env.PORT || 5000;
 
 const app = express();
@@ -49,7 +51,9 @@ async function run() {
       .collection("bookings");
     const usersCollection = client.db("doctors-portal").collection("users");
     const doctorsCollection = client.db("doctors-portal").collection("doctors");
-
+    const paymentsCollection = client
+      .db("doctors-portal")
+      .collection("payments");
     // verify admin access
 
     const verifyAdmin = async (req, res, next) => {
@@ -158,6 +162,13 @@ async function run() {
       res.send(bookings);
     });
 
+    app.get("/bookings/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const booking = await bookingCollection.findOne(query);
+      res.send(booking);
+    });
+
     app.post("/bookings", async (req, res) => {
       const booking = req.body;
       const query = {
@@ -247,6 +258,57 @@ async function run() {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await doctorsCollection.deleteOne(query);
+      res.send(result);
+    });
+
+    // temporary to update price field on appointment options
+    /* app.get("/add-price", async (req, res) => {
+      const filter = {};
+      const options = { upsert: true };
+      const updatedDoc = {
+        $set: {
+          price: 99,
+        },
+      };
+      const result = await appointmentOptionCollection.updateMany(
+        filter,
+        updatedDoc,
+        options
+      );
+      res.send(result);
+    }); */
+
+    app.post("/create-payment-intent", async (req, res) => {
+      const booking = req.body;
+      const price = booking.price;
+      const amount = price * 1000;
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        currency: "usd",
+        amount: amount,
+        payment_method_types: ["card"],
+      });
+
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
+    });
+
+    app.post("/payments", async (req, res) => {
+      const payment = req.body;
+      const result = await paymentsCollection.insertOne(payment);
+      const id = payment.bookingId;
+      const filter = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          paid: true,
+          transactionId: payment.transactionId,
+        },
+      };
+      const updatedResult = await bookingCollection.updateOne(
+        filter,
+        updatedDoc
+      );
       res.send(result);
     });
   } finally {
